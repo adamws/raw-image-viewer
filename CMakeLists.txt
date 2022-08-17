@@ -1,0 +1,120 @@
+cmake_minimum_required(VERSION 3.16)
+project(raw-image-viewer)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+find_package(SDL2 REQUIRED)
+
+set(BUILD_SHARED_LIBS OFF)
+
+set(OPENCV_INSTALL_DIR ${CMAKE_BINARY_DIR}/opencv-install)
+
+include(ExternalProject)
+ExternalProject_Add(opencv
+  SOURCE_DIR ${CMAKE_SOURCE_DIR}/opencv
+  BINARY_DIR opencv-build
+  CMAKE_ARGS
+    -DCMAKE_TOOLCHAIN_FILE:FILEPATH=${CMAKE_TOOLCHAIN_FILE}
+    -DBUILD_SHARED_LIBS:BOOL=OFF
+    # enabled features
+    -DBUILD_opencv_imgproc:BOOL=ON
+    -DBUILD_opencv_imgcodecs:BOOL=ON
+    -DBUILD_PNG:BOOL=ON
+    -DBUILD_ZLIB:BOOL=ON
+    -DWITH_PNG:BOOL=ON
+    # disabled features
+    -DBUILD_opencv_calib3d:BOOL=OFF
+    -DBUILD_opencv_features2d:BOOL=OFF
+    -DBUILD_opencv_flann:BOOL=OFF
+    -DBUILD_opencv_highgui:BOOL=OFF
+    -DBUILD_opencv_java_bindings_generator:BOOL=OFF
+    -DBUILD_opencv_ml:BOOL=OFF
+    -DBUILD_opencv_objdetect:BOOL=OFF
+    -DBUILD_opencv_photo:BOOL=OFF
+    -DBUILD_opencv_python3:BOOL=OFF
+    -DBUILD_opencv_python_bindings_generator:BOOL=OFF
+    -DBUILD_opencv_python_tests:BOOL=OFF
+    -DBUILD_opencv_stitching:BOOL=OFF
+    -DBUILD_opencv_ts:BOOL=OFF
+    -DBUILD_opencv_video:BOOL=OFF
+    -DBUILD_opencv_videoio:BOOL=OFF
+    -DCPU_BASELINE:STRING=""
+    -DCPU_DISPATCH:STRING=""
+    -DCV_DISABLE_OPTIMIZATION:BOOL=ON
+    -DCV_TRACE:BOOL=OFF
+    -DWITH_1394:BOOL=OFF
+    -DWITH_ADE:BOOL=OFF
+    -DWITH_EIGEN:BOOL=OFF
+    -DWITH_FFMPEG:BOOL=OFF
+    -DWITH_GPHOTO2:BOOL=OFF
+    -DWITH_GSTREAMER:BOOL=OFF
+    -DWITH_GTK:BOOL=OFF
+    -DWITH_GTK_2_X:BOOL=OFF
+    -DWITH_IMGCODEC_HDR:BOOL=OFF
+    -DWITH_IMGCODEC_PFM:BOOL=OFF
+    -DWITH_IMGCODEC_PXM:BOOL=OFF
+    -DWITH_IMGCODEC_SUNRASTER:BOOL=OFF
+    -DWITH_IPP:BOOL=OFF
+    -DWITH_ITT:BOOL=OFF
+    -DWITH_JASPER:BOOL=OFF
+    -DWITH_JPEG:BOOL=OFF
+    -DWITH_LAPACK:BOOL=OFF
+    -DWITH_OPENCVL:BOOL=OFF
+    -DWITH_OPENCLAMDBLAS:BOOL=OFF
+    -DWITH_OPENCL_SVM:BOOL=OFF
+    -DWITH_OPENEXR:BOOL=OFF
+    -DWITH_OPENGL:BOOL=OFF
+    -DWITH_OPENJPEG:BOOL=OFF
+    -DWITH_OPENNNI2:BOOL=OFF
+    -DWITH_OPENVX:BOOL=OFF
+    -DWITH_PROTOBUF:BOOL=OFF
+    -DWITH_QUIRC:BOOL=OFF
+    -DWITH_TBB:BOOL=OFF
+    -DWITH_TIFF:BOOL=OFF
+    -DWITH_V4L:BOOL=OFF
+    -DWITH_VTK:BOOL=OFF
+    -DWITH_WEBP:BOOL=OFF
+    -DCMAKE_INSTALL_PREFIX=${OPENCV_INSTALL_DIR}
+)
+
+set(OPENCV_LIBRARIES "")
+set(OPENCV_LIBRARIES_NAMES opencv_imgcodecs opencv_imgproc opencv_core)
+foreach(library ${OPENCV_LIBRARIES_NAMES})
+  list(APPEND OPENCV_LIBRARIES ${OPENCV_INSTALL_DIR}/lib/lib${library}.a)
+endforeach()
+
+# append opencv's dependencies
+list(APPEND OPENCV_LIBRARIES ${OPENCV_INSTALL_DIR}/share/OpenCV/3rdparty/lib/liblibpng.a)
+list(APPEND OPENCV_LIBRARIES ${OPENCV_INSTALL_DIR}/share/OpenCV/3rdparty/lib/libzlib.a)
+
+add_executable(${CMAKE_PROJECT_NAME} main.cpp)
+add_dependencies(${CMAKE_PROJECT_NAME} opencv)
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${OPENCV_INSTALL_DIR}/include)
+target_link_libraries(${CMAKE_PROJECT_NAME}
+  ${OPENCV_LIBRARIES}
+  ${SDL2_LIBRARIES}
+)
+
+if(EMSCRIPTEN)
+  target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE
+    -sUSE_SDL=2
+  )
+  target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
+    -sWASM=1
+    -sEXPORTED_FUNCTIONS=_main,_create_buffer,_load_textures,_get_png_data,_get_png_size
+    -sEXPORTED_RUNTIME_METHODS=ccall,cwrap
+    -sALLOW_MEMORY_GROWTH
+  )
+  set(WEBSITE_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/web)
+  set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${WEBSITE_OUTPUT}
+  )
+  add_custom_command(
+    TARGET ${CMAKE_PROJECT_NAME}
+    POST_BUILD
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMAND ${CMAKE_COMMAND}
+    ARGS -E copy index.html main.js ${WEBSITE_OUTPUT}
+  )
+endif()
