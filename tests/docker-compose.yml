@@ -1,0 +1,18 @@
+version: "3"
+services:
+  firefox:
+    image: selenium/standalone-firefox:4.4.0
+    shm_size: 2gb
+    volumes:
+      - ./inputs:/home/seluser/inputs
+    ports:
+      - "4444:4444"
+      - "7900:7900"
+
+  webapp:
+    image: emscripten/emsdk:3.1.21
+    volumes:
+      - ../build/web:/src
+    command: emrun --no_browser index.html
+    ports:
+      - "6931:6931"

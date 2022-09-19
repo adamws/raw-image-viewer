@@ -1,5 +1,10 @@
 version: 2.1
 
+
+orbs:
+  browser-tools: circleci/browser-tools@1.4.0
+
+
 jobs:
   build:
     docker:
@@ -22,8 +27,60 @@ jobs:
             - build/opencv-build
             - build/opencv-install
             - build/opencv-prefix
+      - persist_to_workspace:
+          root: .
+          paths:
+           - build/web
       - store_artifacts:
           path: build/web
+  test:
+    docker:
+      - image: cimg/python:3.9-browsers
+    steps:
+      - browser-tools/install-browser-tools
+      - browser-tools/install-firefox
+      - browser-tools/install-geckodriver
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: Download Selenium
+          command: |
+            curl -O http://selenium-release.storage.googleapis.com/3.5/selenium-server-standalone-3.5.3.jar
+      - run:
+          name: Start Selenium
+          command: |
+            java -jar selenium-server-standalone-3.5.3.jar -log tests/selenium.log
+          background: true
+      - run:
+          name: Run webapp
+          command: |
+            python -m http.server 6931 --directory build/web
+          background: true
+      - restore_cache:
+          key: test-deps-{{ .Branch }}-{{ checksum "tests/requirements.txt" }}
+      - run:
+          name: Install Python deps in a venv
+          working_directory: tests
+          command: |
+            python3 -m venv venv
+            . venv/bin/activate
+            pip install -r requirements.txt
+      - save_cache:
+          key: test-deps-{{ .Branch }}-{{ checksum "tests/requirements.txt" }}
+          paths:
+            - "venv"
+      - run:
+          name: Run tests
+          working_directory: tests
+          command: |
+            . venv/bin/activate
+            ./wait-for-selenium.sh pytest -s --html=report.html --self-contained-html
+      - store_artifacts:
+          path: tests/report.html
+      - store_artifacts:
+          path: tests/selenium.log
+
 
 workflows:
   main:
@@ -31,4 +88,7 @@ workflows:
       - build:
           filters:
             branches:
-              only: master
+              ignore: gh-pages
+      - test:
+          requires:
+            - build
