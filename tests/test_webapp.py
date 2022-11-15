@@ -10,19 +10,28 @@ from selenium.webdriver.support import expected_conditions as ec
 INPUTS_PATH = os.environ.get("PYTEST_INPUTS_PATH", "./inputs")
 WEBAPP = os.environ.get("WEBAPP", "localhost")
 
+input_files = [
+    (f"{INPUTS_PATH}/320x240-chessboard-gradient-gray.raw", 320, 240, "GREY8"),
+    (f"{INPUTS_PATH}/320x240-chessboard-gradient-uyvy.raw", 320, 240, "UYVY"),
+]
 
-def test_canvas_displays_image(selenium):
+@pytest.mark.parametrize("path,width,height,pixel_format", input_files)
+def test_canvas_displays_image(path, width, height, pixel_format, selenium):
     selenium.get(f"http://{WEBAPP}:6931")
 
     # fill inputs
     fill_with = {
-        "file": f"{INPUTS_PATH}/320x240-chessboard-gradient.raw",
-        "width": "320",
-        "height": "240",
+        "file": path,
+        "width": str(width),
+        "height": str(height),
     }
     for k, v in fill_with.items():
         e = selenium.find_element("xpath", f"//input[@id='{k}']")
         e.send_keys(v)
+
+    # select pixel format
+    e = selenium.find_element("xpath", f"//select[@id='format']")
+    e.send_keys(pixel_format)
 
     wait = WebDriverWait(selenium, 10)
     convert_btn = wait.until(

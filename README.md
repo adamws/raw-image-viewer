@@ -1,6 +1,6 @@
 # raw-image-viewer
 
-Raw `GREY8` image viewer and `PNG` converter with OpenCV and Webassembly.
+Raw images viewer and `PNG` converter with OpenCV and Webassembly.
 
 ## Build
 

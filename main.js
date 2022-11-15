@@ -7,7 +7,7 @@ Module["doNotCaptureKeyboard"] = true;
 
 Module.onRuntimeInitialized = async () => {
     Module.api = {
-        createBuffer: Module.cwrap("create_buffer", "number", ["number", "number"]),
+        createBuffer: Module.cwrap("create_buffer", "number", ["number", "number", "number"]),
         loadTexture: Module.cwrap("load_textures", [], []),
         getPngSize: Module.cwrap("get_png_size", "number", []),
         getPngData: Module.cwrap("get_png_data", "number", []),
@@ -26,8 +26,9 @@ function convert() {
     fr.onload = function () {
         let width = document.getElementById("width").value;
         let height = document.getElementById("height").value;
+        let format = parseInt(document.getElementById("format").value);
         let data = new Uint8Array(fr.result);
-        const buffer = Module.api.createBuffer(width, height);
+        const buffer = Module.api.createBuffer(width, height, format);
         Module.HEAPU8.set(data, buffer);
         Module.api.loadTexture();
         document.getElementById("canvas").removeAttribute("hidden");

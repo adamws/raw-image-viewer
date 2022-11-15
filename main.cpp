@@ -22,11 +22,12 @@ SDL_Renderer *renderer = NULL;
 SDL_Texture *texture = NULL;
 
 cv::Mat input;
+int inputFormat;
 std::vector<uchar> pngBuffer;
 
 // forward declarations of exported functions
 extern "C" {
-  uint8_t* create_buffer(int width, int height);
+  uint8_t* create_buffer(int width, int height, int format);
   void load_textures();
   uint8_t* get_png_data();
   size_t get_png_size();
@@ -61,8 +62,13 @@ void destroy() {
   SDL_Quit();
 }
 
-uint8_t* create_buffer(int width, int height) {
-  input = cv::Mat(height, width, CV_8UC1);
+uint8_t* create_buffer(int width, int height, int format) {
+  int type = CV_8UC1;
+  if (format == 107) { // UYVY
+    type = CV_8UC2;
+  }
+  input = cv::Mat(height, width, type);
+  inputFormat = format;
   return input.data;
 }
 
@@ -72,15 +78,15 @@ void load_textures() {
     SDL_DestroyTexture(texture);
   }
 
-  cv::imencode(".png", input, pngBuffer);
-
   cv::Mat dst;
-  cv::cvtColor(input, dst, CV_GRAY2RGB);
+  cv::cvtColor(input, dst, inputFormat);
+
+  cv::imencode(".png", dst, pngBuffer);
 
   int width = dst.cols;
   int height = dst.rows;
   SDL_Surface* surface = SDL_CreateRGBSurfaceFrom(
-      dst.data, width, height, 24, width * 3, 0xFF0000, 0x00FF00, 0x0000FF, 0);
+      dst.data, width, height, 24, width * 3, 0x0000FF, 0x00FF00, 0xFF0000, 0);
   if (!surface) {
       exit(EXIT_FAILURE);
   }
@@ -103,17 +109,22 @@ int main(int argc, char** argv) {
   init();
   emscripten_set_main_loop(render, 0, 1);
 #else
-  if (argc != 4) {
+  if (argc != 5) {
     std::cout << "Usage:" << std::endl;
-    std::cout << argv[0] << " FILENAME WIDTH HEIGHT" << std::endl;
+    std::cout << argv[0] << " FILENAME WIDTH HEIGHT FORMAT" << std::endl;
     return EXIT_FAILURE;
   } else {
     auto filename = argv[1];
     auto width = std::stoi(argv[2]);
     auto height = std::stoi(argv[3]);
-    auto data = create_buffer(width, height);
+    auto format = std::stoi(argv[4]);
+    auto data = create_buffer(width, height, format);
     std::ifstream fin(filename, std::ios::in | std::ios::binary);
-    fin.read(reinterpret_cast<char *>(data), width * height);
+    auto frameSize = width * height;
+    if (format == 107) { // UYVY
+      frameSize = frameSize * 2;
+    }
+    fin.read(reinterpret_cast<char *>(data), frameSize);
 
     init();
     load_textures();
