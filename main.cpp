@@ -14,8 +14,6 @@
 #include "opencv2/imgproc.hpp"
 #include "opencv2/imgproc/types_c.h"
 
-#define WINDOW_WIDTH    640
-#define WINDOW_HEIGHT   480
 
 SDL_Window *window = NULL;
 SDL_Renderer *renderer = NULL;
@@ -38,7 +36,7 @@ bool init() {
     return false;
   }
 
-  SDL_CreateWindowAndRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer);
+  SDL_CreateWindowAndRenderer(0, 0, 0, &window, &renderer);
   if (window == NULL | renderer == NULL) {
     return false;
   }
@@ -62,7 +60,35 @@ void destroy() {
   SDL_Quit();
 }
 
+void resize_canvas(int width, int height) {
+#ifdef __EMSCRIPTEN__
+  // for webassembly version, limit canvas dimensions by window size
+  int windowWidth = EM_ASM_INT({
+      return document.getElementById("output").clientWidth;
+  });
+  int windowHeight = EM_ASM_INT({
+      var margin = window.getComputedStyle(document.body).getPropertyValue("margin-top");
+      margin = parseInt(margin, 10);
+      var controlsHeight = document.getElementById("controls").clientHeight;
+      return window.innerHeight - (2 * margin) - controlsHeight;
+  });
+  float aspect = (float) width / (float) height;
+  if (width > windowWidth) {
+    width = windowWidth;
+    height = (int) ((float) width / aspect);
+  }
+  if (height > windowHeight) {
+    height = windowHeight;
+    width = (int) (aspect * (float) height);
+  }
+#endif
+
+  SDL_SetWindowSize(window, width, height);
+}
+
 uint8_t* create_buffer(int width, int height, int format) {
+  resize_canvas(width, height);
+
   int type = CV_8UC1;
   if (format == 107) { // UYVY
     type = CV_8UC2;
@@ -118,6 +144,8 @@ int main(int argc, char** argv) {
     auto width = std::stoi(argv[2]);
     auto height = std::stoi(argv[3]);
     auto format = std::stoi(argv[4]);
+
+    init();
     auto data = create_buffer(width, height, format);
     std::ifstream fin(filename, std::ios::in | std::ios::binary);
     auto frameSize = width * height;
@@ -126,7 +154,6 @@ int main(int argc, char** argv) {
     }
     fin.read(reinterpret_cast<char *>(data), frameSize);
 
-    init();
     load_textures();
   }
 
