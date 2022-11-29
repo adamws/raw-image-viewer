@@ -3,6 +3,8 @@ import os
 import re
 from pathlib import Path
 
+import cv2
+import numpy as np
 import pytest
 from pytest_html import extras
 from selenium import webdriver
@@ -20,16 +22,7 @@ input_files = [
 ]
 
 
-def get_canvas_encoded(selenium):
-    return selenium.execute_script(
-        'return document.getElementById("canvas").toDataURL("image/png");'
-    )
-
-
-@pytest.mark.parametrize("path,width,height,pixel_format", input_files)
-def test_canvas_with_reference_images(
-    path, width, height, pixel_format, selenium, extra
-):
+def trigger_file_convert(path, width, height, pixel_format, selenium):
     selenium.get(f"http://{WEBAPP}:6931")
 
     # fill inputs
@@ -57,10 +50,58 @@ def test_canvas_with_reference_images(
     )
     assert canvas
 
+
+def get_canvas_encoded(selenium):
+    return selenium.execute_script(
+        'return document.getElementById("canvas").toDataURL("image/png");'
+    )
+
+
+@pytest.mark.parametrize("path,width,height,pixel_format", input_files)
+def test_canvas_with_reference_images(
+    path, width, height, pixel_format, selenium, extra
+):
+    selenium.get(f"http://{WEBAPP}:6931")
+    trigger_file_convert(path, width, height, pixel_format, selenium)
+
     canvas_encoded = get_canvas_encoded(selenium)
     extra.append(extras.html(f"<div class='image'><img src='{canvas_encoded}'></div>"))
 
     # compare with expected png
     with open(Path(path).with_suffix(".png"), "rb") as f:
-        str_base64 = re.search(r"base64,(.*)", canvas_encoded).group(1)
-        assert str_base64 == base64.b64encode(f.read()).decode("utf-8")
+        canvas_base64 = re.search(r"base64,(.*)", canvas_encoded).group(1)
+        assert canvas_base64 == base64.b64encode(f.read()).decode("utf-8")
+
+
+# all of these dimensions need to fit in window, otherwise canvas scaling will kick in
+# and image comparison will fail:
+@pytest.mark.parametrize(
+    "width,height",
+    [
+        (10, 10),
+        (100, 100),
+        (10, 100),
+        (100, 10),
+        (320, 240),
+        (240, 320),
+    ],
+)
+def test_canvas_with_generated_grey_images(width, height, selenium, tmpdir, extra):
+    selenium.get(f"http://{WEBAPP}:6931")
+
+    data = np.random.randint(0, 256, size=(height, width), dtype=np.uint8)
+    path = f"{tmpdir}/data.raw"
+    data.tofile(path)
+
+    trigger_file_convert(path, width, height, "GREY8", selenium)
+
+    canvas_encoded = get_canvas_encoded(selenium)
+    extra.append(extras.html(f"<div class='image'><img src='{canvas_encoded}'></div>"))
+
+    canvas_base64 = re.search(r"base64,(.*)", canvas_encoded).group(1)
+    canvas_png = base64.b64decode(canvas_base64)
+    canvas_data = cv2.imdecode(
+        np.frombuffer(canvas_png, np.uint8), cv2.IMREAD_GRAYSCALE
+    )
+
+    np.testing.assert_array_equal(canvas_data, data)

@@ -1,3 +1,5 @@
-selenium==4.4.0
+numpy==1.23.5
+opencv-python==4.6.0.66
 pytest==7.1.2
 pytest-html==3.1.1
+selenium==4.4.0
