@@ -1,8 +1,10 @@
+import base64
 import os
+import re
+from pathlib import Path
+
 import pytest
-
 from pytest_html import extras
-
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -25,7 +27,9 @@ def get_canvas_encoded(selenium):
 
 
 @pytest.mark.parametrize("path,width,height,pixel_format", input_files)
-def test_canvas_displays_image(path, width, height, pixel_format, selenium, extra):
+def test_canvas_with_reference_images(
+    path, width, height, pixel_format, selenium, extra
+):
     selenium.get(f"http://{WEBAPP}:6931")
 
     # fill inputs
@@ -55,3 +59,8 @@ def test_canvas_displays_image(path, width, height, pixel_format, selenium, extr
 
     canvas_encoded = get_canvas_encoded(selenium)
     extra.append(extras.html(f"<div class='image'><img src='{canvas_encoded}'></div>"))
+
+    # compare with expected png
+    with open(Path(path).with_suffix(".png"), "rb") as f:
+        str_base64 = re.search(r"base64,(.*)", canvas_encoded).group(1)
+        assert str_base64 == base64.b64encode(f.read()).decode("utf-8")
