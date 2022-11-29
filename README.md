@@ -21,7 +21,7 @@ cmake --build build
 or with docker:
 
 ```
-docker run --rm -v $(pwd):/src -u $(id -u):$(id -g) emscripten/emsdk:3.1.21 \
+docker run --rm -v $(pwd):/src -u $(id -u):$(id -g) emscripten/emsdk:3.1.26 \
   /bin/bash -c "emcmake cmake . -B build && cmake --build build"
 ```
 
