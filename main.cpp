@@ -54,6 +54,10 @@ void render() {
   SDL_RenderPresent(renderer);
 }
 
+void loop() {
+  // nothing to do in loop
+}
+
 void destroy() {
   SDL_DestroyRenderer(renderer);
   SDL_DestroyWindow(window);
@@ -120,6 +124,7 @@ void load_textures() {
   SDL_FreeSurface(surface);
 
   input.release();
+  render();
 }
 
 uint8_t* get_png_data() {
@@ -133,7 +138,7 @@ size_t get_png_size() {
 int main(int argc, char** argv) {
 #ifdef __EMSCRIPTEN__
   init();
-  emscripten_set_main_loop(render, 0, 1);
+  emscripten_set_main_loop(loop, 0, 1);
 #else
   if (argc != 5) {
     std::cout << "Usage:" << std::endl;
@@ -169,7 +174,6 @@ int main(int argc, char** argv) {
           break;
       }
     }
-    render();
   }
 #endif
   destroy();
