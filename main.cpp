@@ -36,7 +36,16 @@ bool init() {
     return false;
   }
 
+#ifdef __EMSCRIPTEN__
+  window = SDL_CreateWindow("", 0, 0, 0, 0, 0);
+  // Without `SDL_RENDERER_SOFTWARE` set, calling `toDataURL()` on canvas object
+  // from javascript will result in black rectangle
+  // see: https://github.com/emscripten-core/emscripten/issues/11111
+  renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
+#else
   SDL_CreateWindowAndRenderer(0, 0, 0, &window, &renderer);
+#endif
+
   if (window == NULL | renderer == NULL) {
     return false;
   }
