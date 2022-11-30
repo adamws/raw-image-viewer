@@ -22,6 +22,14 @@ input_files = [
 ]
 
 
+def assert_browser_size(selenium, width, height):
+    window_size = selenium.get_window_size()
+    # input dimensions need to fit in window, otherwise canvas scaling will kick in
+    # and image comparison will fail:
+    assert width < window_size["width"], f"Browser width too small"
+    assert height < window_size["height"], f"Browser height too small"
+
+
 def trigger_file_convert(path, width, height, pixel_format, selenium):
     selenium.get(f"http://{WEBAPP}:6931")
 
@@ -61,7 +69,6 @@ def get_canvas_encoded(selenium):
 def test_canvas_with_reference_images(
     path, width, height, pixel_format, selenium, extra
 ):
-    selenium.get(f"http://{WEBAPP}:6931")
     trigger_file_convert(path, width, height, pixel_format, selenium)
 
     canvas_encoded = get_canvas_encoded(selenium)
@@ -85,14 +92,7 @@ def test_canvas_with_reference_images(
     ],
 )
 def test_canvas_with_generated_grey_images(width, height, selenium, tmpdir, extra):
-    selenium.get(f"http://{WEBAPP}:6931")
-
-    window_size = selenium.get_window_size()
-    # input dimensions need to fit in window, otherwise canvas scaling will kick in
-    # and image comparison will fail:
-    assert width < window_size["width"], f"Browser width too small"
-    assert height < window_size["height"], f"Browser height too small"
-
+    assert_browser_size(selenium, width, height)
     data = np.random.randint(0, 256, size=(height, width), dtype=np.uint8)
     path = f"{tmpdir}/data.raw"
     data.tofile(path)
@@ -109,3 +109,53 @@ def test_canvas_with_generated_grey_images(width, height, selenium, tmpdir, extr
     )
 
     np.testing.assert_array_equal(canvas_data, data)
+
+
+@pytest.mark.parametrize(
+    "color,width,height",
+    [
+        ("blue", 100, 100),
+        ("green", 100, 100),
+        ("red", 100, 100),
+    ],
+)
+def test_canvas_with_generated_uyvy_images(color, width, height, selenium, tmpdir, extra):
+    assert_browser_size(selenium, width, height)
+
+    bgr_data = np.zeros((height, width, 3), dtype=np.uint8)
+    if color == "blue":
+        bgr_data[:, :, 0] = 255
+    elif color == "green":
+        bgr_data[:, :, 1] = 255
+    elif color == "red":
+        bgr_data[:, :, 2] = 255
+    else:
+        raise Exception("Unrecognized color")
+
+    # convert BGR to UYVY (not directly supported by cvtColor, need to do it with intermediate step)
+    data = cv2.cvtColor(bgr_data, cv2.COLOR_BGR2YUV)
+    y0 = np.expand_dims(data[..., 0][::, ::2], axis=2)
+    u = np.expand_dims(data[..., 1][::, ::2], axis=2)
+    y1 = np.expand_dims(data[..., 0][::, 1::2], axis=2)
+    v = np.expand_dims(data[..., 2][::, ::2], axis=2)
+    data = np.concatenate((u, y0, v, y1), axis=2)
+    data = data.reshape((height, width, 2))
+
+    path = f"{tmpdir}/data.raw"
+    data.tofile(path)
+
+    trigger_file_convert(path, width, height, "UYVY", selenium)
+
+    canvas_encoded = get_canvas_encoded(selenium)
+    extra.append(extras.html(f"<div class='image'><img src='{canvas_encoded}'></div>"))
+
+    canvas_base64 = re.search(r"base64,(.*)", canvas_encoded).group(1)
+    canvas_png = base64.b64decode(canvas_base64)
+    canvas_data = cv2.imdecode(
+        np.frombuffer(canvas_png, np.uint8), cv2.IMREAD_COLOR
+    )
+
+    # converting from brg -> uyvy -> bgr looses information, compare with some margin,
+    # we are hoping to catch bugs like swapped channels here and not trying to
+    # validate exact pixel values.
+    np.testing.assert_allclose(canvas_data, bgr_data, atol=25)
