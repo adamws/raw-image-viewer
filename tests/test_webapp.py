@@ -73,8 +73,6 @@ def test_canvas_with_reference_images(
         assert canvas_base64 == base64.b64encode(f.read()).decode("utf-8")
 
 
-# all of these dimensions need to fit in window, otherwise canvas scaling will kick in
-# and image comparison will fail:
 @pytest.mark.parametrize(
     "width,height",
     [
@@ -88,6 +86,12 @@ def test_canvas_with_reference_images(
 )
 def test_canvas_with_generated_grey_images(width, height, selenium, tmpdir, extra):
     selenium.get(f"http://{WEBAPP}:6931")
+
+    window_size = selenium.get_window_size()
+    # input dimensions need to fit in window, otherwise canvas scaling will kick in
+    # and image comparison will fail:
+    assert width < window_size["width"], f"Browser width too small"
+    assert height < window_size["height"], f"Browser height too small"
 
     data = np.random.randint(0, 256, size=(height, width), dtype=np.uint8)
     path = f"{tmpdir}/data.raw"
