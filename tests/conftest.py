@@ -5,6 +5,26 @@ import pytest
 from selenium import webdriver
 
 
+def is_circleci():
+    return "CI" in os.environ
+
+
+@pytest.fixture(scope="session")
+def selenium_data_path():
+    if is_circleci():
+        return os.getcwd() + "/data"
+    else:
+        return "/home/seluser/data"
+
+
+@pytest.fixture(scope="session")
+def website():
+    if is_circleci():
+        return "http://localhost:6931"
+    else:
+        return "http://webapp:6931"
+
+
 def to_base64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
@@ -25,13 +45,23 @@ def pytest_runtest_makereport(item, call):
         report.extra = extra
 
 
-@pytest.fixture
-def selenium(tmpdir):
-    firefox_options = webdriver.FirefoxOptions()
+@pytest.fixture(scope="session")
+def selenium_session(selenium_data_path):
+    options = webdriver.FirefoxOptions()
+    options.set_preference("browser.download.folderList", 2)
+    options.set_preference("browser.download.manager.showWhenStarting", False)
+    options.set_preference("browser.download.useDownloadDir", True)
+    options.set_preference("browser.download.dir", f"{selenium_data_path}/outputs")
     selenium = webdriver.Remote(
         command_executor='http://localhost:4444/wd/hub',
-        options=firefox_options
+        options=options
     )
     yield selenium
-    selenium.save_screenshot(f"{tmpdir}/screenshot.png")
     selenium.quit()
+
+
+@pytest.fixture
+def selenium(selenium_session, website, tmpdir):
+    selenium_session.get(website)
+    yield selenium_session
+    selenium_session.save_screenshot(f"{tmpdir}/screenshot.png")

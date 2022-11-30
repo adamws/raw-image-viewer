@@ -1,6 +1,10 @@
 import base64
 import os
 import re
+import shlex
+import shutil
+import subprocess
+import time
 from pathlib import Path
 
 import cv2
@@ -13,12 +17,11 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as ec
 
 
-INPUTS_PATH = os.environ.get("PYTEST_INPUTS_PATH", "./inputs")
-WEBAPP = os.environ.get("WEBAPP", "localhost")
+INPUTS_PATH = "./data/inputs"
 
 input_files = [
-    (f"{INPUTS_PATH}/320x240-chessboard-gradient-gray.raw", 320, 240, "GREY8"),
-    (f"{INPUTS_PATH}/320x240-chessboard-gradient-uyvy.raw", 320, 240, "UYVY"),
+    ("320x240-chessboard-gradient-gray.raw", 320, 240, "GREY8"),
+    ("320x240-chessboard-gradient-uyvy.raw", 320, 240, "UYVY"),
 ]
 
 
@@ -31,7 +34,6 @@ def assert_browser_size(selenium, width, height):
 
 
 def trigger_file_convert(path, width, height, pixel_format, selenium):
-    selenium.get(f"http://{WEBAPP}:6931")
 
     # fill inputs
     fill_with = {
@@ -65,17 +67,20 @@ def get_canvas_encoded(selenium):
     )
 
 
-@pytest.mark.parametrize("path,width,height,pixel_format", input_files)
+@pytest.mark.parametrize("filename,width,height,pixel_format", input_files)
 def test_canvas_with_reference_images(
-    path, width, height, pixel_format, selenium, extra
+    filename, width, height, pixel_format, selenium, extra
 ):
+    path = f"{INPUTS_PATH}/{filename}"
     trigger_file_convert(path, width, height, pixel_format, selenium)
 
     canvas_encoded = get_canvas_encoded(selenium)
     extra.append(extras.html(f"<div class='image'><img src='{canvas_encoded}'></div>"))
 
     # compare with expected png
-    with open(Path(path).with_suffix(".png"), "rb") as f:
+    # note that path here is in relation to python process, not selenium
+    path = Path(path).with_suffix(".png")
+    with open(path, "rb") as f:
         canvas_base64 = re.search(r"base64,(.*)", canvas_encoded).group(1)
         assert canvas_base64 == base64.b64encode(f.read()).decode("utf-8")
 
@@ -93,6 +98,7 @@ def test_canvas_with_reference_images(
 )
 def test_canvas_with_generated_grey_images(width, height, selenium, tmpdir, extra):
     assert_browser_size(selenium, width, height)
+
     data = np.random.randint(0, 256, size=(height, width), dtype=np.uint8)
     path = f"{tmpdir}/data.raw"
     data.tofile(path)
@@ -119,7 +125,9 @@ def test_canvas_with_generated_grey_images(width, height, selenium, tmpdir, extr
         ("red", 100, 100),
     ],
 )
-def test_canvas_with_generated_uyvy_images(color, width, height, selenium, tmpdir, extra):
+def test_canvas_with_generated_uyvy_images(
+    color, width, height, selenium, tmpdir, extra
+):
     assert_browser_size(selenium, width, height)
 
     bgr_data = np.zeros((height, width, 3), dtype=np.uint8)
@@ -151,11 +159,71 @@ def test_canvas_with_generated_uyvy_images(color, width, height, selenium, tmpdi
 
     canvas_base64 = re.search(r"base64,(.*)", canvas_encoded).group(1)
     canvas_png = base64.b64decode(canvas_base64)
-    canvas_data = cv2.imdecode(
-        np.frombuffer(canvas_png, np.uint8), cv2.IMREAD_COLOR
-    )
+    canvas_data = cv2.imdecode(np.frombuffer(canvas_png, np.uint8), cv2.IMREAD_COLOR)
 
     # converting from brg -> uyvy -> bgr looses information, compare with some margin,
     # we are hoping to catch bugs like swapped channels here and not trying to
     # validate exact pixel values.
     np.testing.assert_allclose(canvas_data, bgr_data, atol=25)
+
+
+def run_command_in_container(container_id, command):
+    process = subprocess.run(
+        f"docker exec -u root {container_id} {command}", shell=True, capture_output=True
+    )
+    return process.returncode, process.stdout.decode()
+
+
+@pytest.fixture
+def download_dir():
+    outputs_path = "./data/outputs"
+    os.mkdir(outputs_path)
+    # mode change needed for selenium to write downloads there:
+    os.chmod(outputs_path, 0o777)
+
+    yield outputs_path
+
+    # cleanup requires workarounds...
+    # if selenium is run inside container, then downloaded png file has different file owner
+    # than process running tests. The workaround is to run rm in running container.
+    container_details = subprocess.run(
+        "docker container ls --all | grep selenium", shell=True, capture_output=True
+    )
+    if container_details.returncode == 0:
+        container_id = container_details.stdout.decode().split(" ", 1)[0]
+        returncode, response = run_command_in_container(
+            container_id, "ls /home/seluser/data/outputs"
+        )
+        if returncode == 0:
+            for file in response.split("\n")[:-1]:
+                file_escaped = shlex.quote(file)
+                run_command_in_container(
+                    container_id, f"rm /home/seluser/data/outputs/{file_escaped}"
+                )
+    shutil.rmtree(outputs_path)
+
+
+def test_download_png_button(download_dir, selenium, tmpdir):
+    (filename, width, height, pixel_format) = input_files[0]
+    path = f"{INPUTS_PATH}/{filename}"
+    trigger_file_convert(path, width, height, pixel_format, selenium)
+
+    download_btn = WebDriverWait(selenium, 60).until(
+        ec.element_to_be_clickable((By.XPATH, "//button[@id='downloadBtn']")), 60
+    )
+    download_btn.click()
+    time.sleep(2)
+
+    # compare with expected png
+    name = Path(filename).stem
+    input_path = f"{INPUTS_PATH}/{name}.png"
+    downloaded_path = f"{download_dir}/{name}.raw.png"
+    input_image = cv2.imdecode(np.fromfile(input_path), cv2.IMREAD_COLOR)
+    download_image = cv2.imdecode(np.fromfile(downloaded_path), cv2.IMREAD_COLOR)
+    np.testing.assert_array_equal(input_image, download_image)
+
+
+def test_download_png_button_without_convert(selenium):
+    button = selenium.find_element("xpath", f"//button[@id='downloadBtn']")
+    assert button.is_displayed()
+    assert not button.is_enabled()
