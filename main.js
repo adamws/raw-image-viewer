@@ -21,11 +21,17 @@ function convert() {
         alert("Please select a file");
         return;
     }
+
+    let width = document.getElementById("width").value;
+    let height = document.getElementById("height").value;
+    if (width <= 0 || height <= 0) {
+        alert("Invalid file dimensions");
+        return;
+    }
+
     let file = files[0];
     let fr = new FileReader();
     fr.onload = function () {
-        let width = document.getElementById("width").value;
-        let height = document.getElementById("height").value;
         let format = parseInt(document.getElementById("format").value);
         let data = new Uint8Array(fr.result);
         const buffer = Module.api.createBuffer(width, height, format);
