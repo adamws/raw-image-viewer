@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 from pytest_html import extras
 from selenium import webdriver
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as ec
@@ -24,12 +25,58 @@ input_files = [
 ]
 
 
+def click_convert_button(selenium):
+    convert_btn = selenium.find_element("xpath", f"//button[text()='Convert']")
+    assert convert_btn.is_displayed()
+    assert convert_btn.is_enabled()
+    convert_btn.click()
+
+
+def assert_alert(selenium, message):
+    try:
+        WebDriverWait(selenium, 5).until(ec.alert_is_present())
+        alert = selenium.switch_to.alert
+        assert alert.text == message
+        alert.accept()
+    except TimeoutException:
+        assert False, "No alert found"
+
+
+def test_convert_without_file_input(selenium):
+    click_convert_button(selenium)
+    assert_alert(selenium, "Please select a file")
+
+
+@pytest.mark.parametrize(
+    "dimensions",
+    [
+        [None, None],
+        [None, 0],
+        [0, None],
+        [0, 0],
+        [-10, 10],
+        [10, -10],
+        ["a", 10],
+        [10, "a"],
+    ],
+)
+def test_convert_with_invalid_file_dimensions(dimensions, selenium):
+    for k, v in zip(["width", "height"], dimensions):
+        e = selenium.find_element("xpath", f"//input[@id='{k}']")
+        if v != None:
+            e.send_keys(str(v))
+    e = selenium.find_element("xpath", f"//input[@id='file']")
+    e.send_keys(f"{INPUTS_PATH}/{input_files[0][0]}")
+    click_convert_button(selenium)
+    assert_alert(selenium, "Invalid file dimensions")
+
+
 def assert_browser_size(selenium, width, height):
     window_size = selenium.get_window_size()
     # input dimensions need to fit in window, otherwise canvas scaling will kick in
     # and image comparison will fail:
-    assert width < window_size["width"], f"Browser width too small"
-    assert height < window_size["height"], f"Browser height too small"
+    assert width < window_size["width"], "Browser width too small"
+    assert height < window_size["height"], "Browser height too small"
 
 
 def trigger_file_convert(path, width, height, pixel_format, selenium):
@@ -48,12 +95,9 @@ def trigger_file_convert(path, width, height, pixel_format, selenium):
     e = selenium.find_element("xpath", f"//select[@id='format']")
     e.send_keys(pixel_format)
 
-    wait = WebDriverWait(selenium, 10)
-    convert_btn = wait.until(
-        ec.element_to_be_clickable((By.XPATH, "//button[text()='Convert']"))
-    )
-    convert_btn.click()
+    click_convert_button(selenium)
 
+    wait = WebDriverWait(selenium, 10)
     canvas = wait.until(
         ec.visibility_of_element_located((By.XPATH, "//canvas[@id='canvas']"))
     )
@@ -190,9 +234,7 @@ def download_dir():
     )
     if container_details.returncode == 0:
         container_id = container_details.stdout.decode().split(" ", 1)[0]
-        run_command_in_container(
-            container_id, "rm -rf /home/seluser/data/outputs"
-        )
+        run_command_in_container(container_id, "rm -rf /home/seluser/data/outputs")
     else:
         shutil.rmtree(outputs_path)
 
