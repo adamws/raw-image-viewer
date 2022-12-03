@@ -1,7 +1,6 @@
 import base64
 import os
 import re
-import shlex
 import shutil
 import subprocess
 import time
@@ -177,7 +176,7 @@ def run_command_in_container(container_id, command):
 @pytest.fixture
 def download_dir():
     outputs_path = "./data/outputs"
-    os.mkdir(outputs_path)
+    os.makedirs(outputs_path, exist_ok=True)
     # mode change needed for selenium to write downloads there:
     os.chmod(outputs_path, 0o777)
 
@@ -191,16 +190,11 @@ def download_dir():
     )
     if container_details.returncode == 0:
         container_id = container_details.stdout.decode().split(" ", 1)[0]
-        returncode, response = run_command_in_container(
-            container_id, "ls /home/seluser/data/outputs"
+        run_command_in_container(
+            container_id, "rm -rf /home/seluser/data/outputs"
         )
-        if returncode == 0:
-            for file in response.split("\n")[:-1]:
-                file_escaped = shlex.quote(file)
-                run_command_in_container(
-                    container_id, f"rm /home/seluser/data/outputs/{file_escaped}"
-                )
-    shutil.rmtree(outputs_path)
+    else:
+        shutil.rmtree(outputs_path)
 
 
 def test_download_png_button(download_dir, selenium, tmpdir):
