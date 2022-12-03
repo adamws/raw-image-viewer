@@ -80,6 +80,26 @@ jobs:
           path: tests/report.html
       - store_artifacts:
           path: tests/selenium.log
+  deploy:
+    docker:
+      - image: cimg/base:2022.12
+    steps:
+      - attach_workspace:
+          at: .
+      - add_ssh_keys:
+          fingerprints:
+            - "d5:c1:2f:40:5f:1f:cf:99:12:a6:d3:7a:0f:09:94:49"
+      - run:
+          name: Deploy to github pages
+          working_directory: build/web
+          command: |
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
+            git init --quiet
+            git config user.name "CircleCI"
+            git config user.email "${CIRCLE_PROJECT_USERNAME}@users.noreply.github.com"
+            git add -A
+            git commit -m "[ciskip] deploy ${CIRCLE_SHA1}"
+            git push --force $CIRCLE_REPOSITORY_URL master:gh-pages
 
 
 workflows:
@@ -92,3 +112,13 @@ workflows:
       - test:
           requires:
             - build
+      - hold:
+          type: approval
+          requires:
+            - test
+          filters:
+            branches:
+              only: master
+      - deploy:
+          requires:
+            - hold
