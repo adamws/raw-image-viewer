@@ -2,7 +2,7 @@ version: 2.1
 
 
 orbs:
-  browser-tools: circleci/browser-tools@1.4.0
+  browser-tools: circleci/browser-tools@1.5.3
 
 
 jobs:
@@ -35,7 +35,7 @@ jobs:
           path: build/web
   test:
     docker:
-      - image: cimg/python:3.9-browsers
+      - image: cimg/python:3.13-browsers
     steps:
       - browser-tools/install-browser-tools
       - browser-tools/install-firefox
@@ -46,11 +46,11 @@ jobs:
       - run:
           name: Download Selenium
           command: |
-            curl -O http://selenium-release.storage.googleapis.com/3.5/selenium-server-standalone-3.5.3.jar
+            curl -LO https://github.com/SeleniumHQ/selenium/releases/download/selenium-4.31.0/selenium-server-4.31.0.jar
       - run:
           name: Start Selenium
           command: |
-            java -jar selenium-server-standalone-3.5.3.jar -log tests/selenium.log
+            java -jar selenium-server-4.31.0.jar standalone --log tests/selenium.log
           background: true
       - run:
           name: Run webapp

@@ -4,13 +4,38 @@ project(raw-image-viewer)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(SDL2 REQUIRED)
+include(ExternalProject)
 
 set(BUILD_SHARED_LIBS OFF)
 
+if(NOT EMSCRIPTEN)
+set(SDL_INSTALL_DIR ${CMAKE_BINARY_DIR}/sdl-install)
+
+ExternalProject_Add(sdl
+  SOURCE_DIR ${CMAKE_SOURCE_DIR}/sdl
+  BINARY_DIR sdl-build
+  CMAKE_ARGS
+    -DBUILD_SHARED_LIBS:BOOL=OFF
+    -DSDL_TEST:BOOL=OFF
+    # disabled features
+    -DSDL_ALSA:BOOL=OFF
+    -DSDL_JACK:BOOL=OFF
+    -DSDL_PIPEWIRE:BOOL=OFF
+    -DSDL_PULSEAUDIO:BOOL=OFF
+    -DSDL_VULKAN:BOOL=OFF
+    -DSDL_WAYLAND:BOOL=OFF
+    -DCMAKE_INSTALL_PREFIX=${SDL_INSTALL_DIR}
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+)
+set(SDL2_INCLUDES ${SDL_INSTALL_DIR}/include)
+set(SDL2_LIBRARIES ${SDL_INSTALL_DIR}/lib/libSDL2.a)
+else()
+find_package(SDL2 REQUIRED)
+set(SDL2_INCLUDES "")
+endif()
+
 set(OPENCV_INSTALL_DIR ${CMAKE_BINARY_DIR}/opencv-install)
 
-include(ExternalProject)
 ExternalProject_Add(opencv
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/opencv
   BINARY_DIR opencv-build
@@ -45,6 +70,7 @@ ExternalProject_Add(opencv
     -DCV_TRACE:BOOL=OFF
     -DWITH_1394:BOOL=OFF
     -DWITH_ADE:BOOL=OFF
+    -DWITH_AVIF:BOOL=OFF
     -DWITH_EIGEN:BOOL=OFF
     -DWITH_FFMPEG:BOOL=OFF
     -DWITH_GPHOTO2:BOOL=OFF
@@ -85,13 +111,16 @@ foreach(library ${OPENCV_LIBRARIES_NAMES})
 endforeach()
 
 # append opencv's dependencies
-list(APPEND OPENCV_LIBRARIES ${OPENCV_INSTALL_DIR}/share/OpenCV/3rdparty/lib/liblibpng.a)
-list(APPEND OPENCV_LIBRARIES ${OPENCV_INSTALL_DIR}/share/OpenCV/3rdparty/lib/libzlib.a)
+list(APPEND OPENCV_LIBRARIES ${OPENCV_INSTALL_DIR}/lib/opencv4/3rdparty/liblibpng.a)
+list(APPEND OPENCV_LIBRARIES ${OPENCV_INSTALL_DIR}/lib/opencv4/3rdparty/libzlib.a)
 
 add_executable(${CMAKE_PROJECT_NAME} main.cpp)
 add_dependencies(${CMAKE_PROJECT_NAME} opencv)
-target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${OPENCV_INSTALL_DIR}/include)
-target_link_libraries(${CMAKE_PROJECT_NAME}
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+  ${OPENCV_INSTALL_DIR}/include/opencv4
+  ${SDL2_INCLUDES}
+)
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
   ${OPENCV_LIBRARIES}
   ${SDL2_LIBRARIES}
 )

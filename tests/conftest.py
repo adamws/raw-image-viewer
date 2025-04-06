@@ -53,7 +53,7 @@ def selenium_session(selenium_data_path):
     options.set_preference("browser.download.useDownloadDir", True)
     options.set_preference("browser.download.dir", f"{selenium_data_path}/outputs")
     selenium = webdriver.Remote(
-        command_executor='http://localhost:4444/wd/hub',
+        command_executor='http://localhost:4444',
         options=options
     )
     yield selenium
