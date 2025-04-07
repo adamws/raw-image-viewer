@@ -1,0 +1,139 @@
+version: 2.1
+
+
+orbs:
+  browser-tools: circleci/browser-tools@1.5.3
+
+
+jobs:
+  build-emscripten:
+    docker:
+      - image: emscripten/emsdk:3.1.70
+    steps:
+      - checkout
+      - run: git submodule sync
+      - run: git submodule update --init
+      - run:
+          name: Build with emscripten
+          command: |
+            emcmake cmake . -B build
+            cmake --build build
+      - persist_to_workspace:
+          root: .
+          paths:
+           - build/web
+      - store_artifacts:
+          path: build/web
+  build-native:
+    machine:
+      image: ubuntu-2204:2022.10.2
+    steps:
+      - checkout
+      - run: git submodule sync
+      - run: git submodule update --init
+      - run:
+          name: Install dependencies
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y cmake build-essential
+      - run:
+          name: Build
+          command: |
+            cmake . -B build
+            cmake --build build
+  test:
+    docker:
+      - image: cimg/python:3.13-browsers
+    steps:
+      - browser-tools/install-browser-tools
+      - browser-tools/install-firefox
+      - browser-tools/install-geckodriver
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: Download Selenium
+          command: |
+            curl -LO https://github.com/SeleniumHQ/selenium/releases/download/selenium-4.31.0/selenium-server-4.31.0.jar
+      - run:
+          name: Start Selenium
+          command: |
+            java -jar selenium-server-4.31.0.jar standalone --log tests/selenium.log
+          background: true
+      - run:
+          name: Run webapp
+          command: |
+            python -m http.server 6931 --directory build/web
+          background: true
+      - restore_cache:
+          key: test-deps-{{ .Branch }}-{{ checksum "tests/requirements.txt" }}
+      - run:
+          name: Install Python deps in a venv
+          working_directory: tests
+          command: |
+            python3 -m venv venv
+            . venv/bin/activate
+            pip install -r requirements.txt
+      - save_cache:
+          key: test-deps-{{ .Branch }}-{{ checksum "tests/requirements.txt" }}
+          paths:
+            - "venv"
+      - run:
+          name: Run tests
+          working_directory: tests
+          command: |
+            . venv/bin/activate
+            ./wait-for-selenium.sh pytest -s --html=report.html --self-contained-html
+      - store_artifacts:
+          path: tests/report.html
+      - store_artifacts:
+          path: tests/selenium.log
+  deploy:
+    docker:
+      - image: cimg/base:2022.12
+    steps:
+      - attach_workspace:
+          at: .
+      - add_ssh_keys:
+          fingerprints:
+            - "d5:c1:2f:40:5f:1f:cf:99:12:a6:d3:7a:0f:09:94:49"
+      - run:
+          name: Deploy to github pages
+          working_directory: build/web
+          command: |
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
+            mkdir .circleci
+            wget https://raw.githubusercontent.com/adamws/raw-image-viewer/master/.circleci/config.yml -P .circleci
+            touch .nojekyll
+            git init --quiet
+            git config user.name "CircleCI"
+            git config user.email "${CIRCLE_PROJECT_USERNAME}@users.noreply.github.com"
+            git add -A
+            git commit -m "Deploy ${CIRCLE_SHA1}"
+            git push --force $CIRCLE_REPOSITORY_URL master:gh-pages
+
+
+workflows:
+  main:
+    jobs:
+      - build-emscripten:
+          filters:
+            branches:
+              ignore: gh-pages
+      - build-native:
+          filters:
+            branches:
+              ignore: gh-pages
+      - test:
+          requires:
+            - build-emscripten
+      - hold:
+          type: approval
+          requires:
+            - test
+          filters:
+            branches:
+              only: master
+      - deploy:
+          requires:
+            - hold
