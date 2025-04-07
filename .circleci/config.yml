@@ -6,7 +6,7 @@ orbs:
 
 
 jobs:
-  build:
+  build-emscripten:
     docker:
       - image: emscripten/emsdk:3.1.26
     steps:
@@ -33,6 +33,23 @@ jobs:
            - build/web
       - store_artifacts:
           path: build/web
+  build-native:
+    machine:
+      image: ubuntu-2204:2022.10.2
+    steps:
+      - checkout
+      - run: git submodule sync
+      - run: git submodule update --init
+      - run:
+          name: Install dependencies
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y cmake build-essential
+      - run:
+          name: Build
+          command: |
+            cmake . -B build
+            cmake --build build
   test:
     docker:
       - image: cimg/python:3.13-browsers
@@ -108,13 +125,17 @@ jobs:
 workflows:
   main:
     jobs:
-      - build:
+      - build-emscripten:
+          filters:
+            branches:
+              ignore: gh-pages
+      - build-native:
           filters:
             branches:
               ignore: gh-pages
       - test:
           requires:
-            - build
+            - build-emscripten
       - hold:
           type: approval
           requires:
