@@ -8,25 +8,16 @@ orbs:
 jobs:
   build-emscripten:
     docker:
-      - image: emscripten/emsdk:3.1.26
+      - image: emscripten/emsdk:3.1.70
     steps:
       - checkout
       - run: git submodule sync
       - run: git submodule update --init
-      - restore_cache:
-          keys:
-            - opencv-cache-{{ arch }}-{{ .Branch }}-{{ checksum ".git/modules/opencv/HEAD" }}
       - run:
           name: Build with emscripten
           command: |
             emcmake cmake . -B build
             cmake --build build
-      - save_cache:
-          key: opencv-cache-{{ arch }}-{{ .Branch }}-{{ checksum ".git/modules/opencv/HEAD" }}
-          paths:
-            - build/opencv-build
-            - build/opencv-install
-            - build/opencv-prefix
       - persist_to_workspace:
           root: .
           paths:
